@@ -262,20 +262,21 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 	int offset = cur_addr % 256;
 	int written_bytes = 0;
 	//set temp to 256 bytes
-  	uint8_t temp_buf[256];
+  	uint8_t *temp_buf = malloc(256);
       	//make a need to write variable for the remainders
       	int need_to_write = 0;
 	//while loop to  see if the read length is greater than what has been read
-	printf("before while loop");
 	
 	while(written_bytes < write_len)
 	{
-		printf("in here");
 		//jbod operation to seek to block and disk, using packBytes
 		int jbod_disk = op(cur_disk,0,JBOD_SEEK_TO_DISK);
 		jbod_operation(jbod_disk,NULL);
 		int jbod_block = op(0,cur_block,JBOD_SEEK_TO_BLOCK);
 		jbod_operation(jbod_block,NULL);
+		int jbod_read = op(0,0,JBOD_READ_BLOCK);
+		jbod_operation(jbod_read,temp_buf);
+		memcpy(offset+temp_buf,write_buf,need_to_write);
 		int jbod_write = op(0,0,JBOD_WRITE_BLOCK);
 		jbod_operation(jbod_write,temp_buf);
 		//set need to read to remainder of read
@@ -284,36 +285,38 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 		//if writing less than a block
 		if(offset + need_to_write < JBOD_BLOCK_SIZE)
 		{
-			memcpy(offset+temp_buf,write_buf,need_to_write);
-			//use jbod operation to write the entire 256 bytes block
-			int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
-			jbod_operation(write_the_block,temp_buf);
-			written_bytes += need_to_write;
+		memcpy(offset+temp_buf,write_buf,need_to_write);
+		int jbod_write = op(0,0,JBOD_WRITE_BLOCK);
+		jbod_operation(jbod_write,temp_buf);
+		written_bytes += need_to_write;
+		//set need to read to remainder of read
+		need_to_write = write_len - written_bytes;
 		}
 		else 
 		{
-			memcpy(offset+temp_buf,write_buf,need_to_write);
-			//use jbod operation to write the entire 256 bytes block
-			int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
-			jbod_operation(write_the_block,temp_buf);
+		memcpy(temp_buf,write_buf+written_bytes,256-offset);
+		int jbod_write = op(0,0,JBOD_WRITE_BLOCK);
+		jbod_operation(jbod_write,temp_buf);
+		written_bytes += 256-offset;
+		//set need to read to remainder of read
+		need_to_write = write_len - written_bytes;
 		}
 			
 	
-	
+	//update the disk and block
+	int update_disk = op(cur_disk,0,JBOD_SEEK_TO_DISK);
+         jbod_operation(update_disk,NULL);
+	 int update_block = op(0,cur_block,JBOD_SEEK_TO_BLOCK);
+         jbod_operation(update_block,NULL);
 	//use jbod operation to write the entire 256 bytes block
 	int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
-	jbod_operation(write_the_block,NULL);
+	jbod_operation(write_the_block,temp_buf);
 	//keeping to update everything at the end
   	//current address is added to the read_bytes
        	cur_addr += written_bytes;
 	//update current disk and block
        	cur_disk = cur_addr/65536;
        	cur_block = cur_addr%65536 /256;
-	//update the disk and block
-	int update_disk = op(cur_disk,0,JBOD_SEEK_TO_DISK);
-         jbod_operation(update_disk,NULL);
-	 int update_block = op(0,cur_block,JBOD_SEEK_TO_BLOCK);
-         jbod_operation(update_block,NULL);
          offset = 0;
          
 		       
