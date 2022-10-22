@@ -234,6 +234,7 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 	{
 		return -1;
 	}
+	//make outof bounds error
 	if(start_addr+write_len>1048576)
 	{
 		return -1;
@@ -251,7 +252,7 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 	{
 		return -1;
 	}
-	
+	//update current address
 	int cur_addr = start_addr;
 	//current disk using start address divided by disk size, then times disk size
 	int cur_disk = start_addr / 65536;
@@ -277,8 +278,7 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 	
 	while(written_bytes < write_len)
 	{
-		
-		printf("\ncurr addr: %d, \ncurrdisk: %d, \n cur block: %d",cur_addr,cur_disk,cur_block);
+		//if the offset is not equal to zero
 		if(offset!=0)
 		{
 			//if writing less than a block
@@ -288,7 +288,7 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 				//use jbod operation to write the entire 256 bytes block
 				int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
 				jbod_operation(write_the_block,temp_buf);
-				written_bytes += write_len;
+				written_bytes += write_len;//increment written bytes
 			}
 			else
 			{
@@ -310,9 +310,9 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
          	jbod_operation(reupdate_disk,NULL);
 	 	int reupdate_block = op(0,cur_block,JBOD_SEEK_TO_BLOCK);
          	jbod_operation(reupdate_block,NULL);
-		if(offset==0)
-		{
-			if(need_to_write<256)
+		if(offset==0)//if starts at the beginning of a block
+		{//memcpy to write from what has already been written into the temp buf
+			if(need_to_write<256)//if the remainder is less than a block
 			{
 				memcpy(temp_buf,write_buf+written_bytes,need_to_write);
 				//use jbod operation to write 
@@ -321,12 +321,12 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 				written_bytes+=need_to_write;
 			}
 			else
-			{
+			{//memcpy to write like above but in the size of a block
 				memcpy(temp_buf,write_buf+written_bytes,256);
 				//use jbod operation to write the entire 256 bytes block
 				int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
 				jbod_operation(write_the_block,temp_buf);
-				written_bytes+=256;
+				written_bytes+=256;//written bytes should incremement by a block
 			}
 		}
 				
@@ -346,13 +346,13 @@ int mdadm_write(uint32_t start_addr, uint32_t write_len, const uint8_t *write_bu
 	//use jbod operation to write the entire 256 bytes block
 	int write_the_block = op(0,0,JBOD_WRITE_BLOCK);
 	jbod_operation(write_the_block,temp_buf);
-         offset = (cur_addr %JBOD_DISK_SIZE)/JBOD_BLOCK_SIZE;
+         offset = cur_addr % 256;
          need_to_write = write_len-written_bytes;
 		       
 	}
 	
-	//return the final bytes written
-	 return written_bytes;
+	//return the final write len
+	 return write_len;
 	
 	 
 	
